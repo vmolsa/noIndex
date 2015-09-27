@@ -1,12 +1,14 @@
 var net = require('net');
 var noIndex = require('../../lib/noIndex.js');
-var github = require('../../services/github.js');
-var memory = require('../../drivers/memory.js');
 
 var index = new noIndex();
 
-index.setDriver(memory());
-index.setService('github', github());
+index.setDriver(noIndex.getDriver('memory'));
+index.setService('github', noIndex.getService('github', {
+  //token: 'GITHUB_OAUTH_TOKEN',
+  username: 'GITHUB_USERNAME',
+  password: 'GITHUB_PASSWORD',
+}));
 
 net.createServer(function (socket) {
   socket.name = socket.remoteAddress + ":" + socket.remotePort;
@@ -24,19 +26,19 @@ net.createServer(function (socket) {
         case 'get':          
           index.get.apply(index, args).then(function(data) {
             if (data) {
-              socket.write(JSON.stringify(data) + '\r\n');
+              socket.write(JSON.stringify(data));
             } else {
-              socket.write('undefined\r\n');
+              socket.write('undefined');
             }
-          }).catch(function(error) {
+          }).catch(function(error) {            
             try {
-              socket.write(error.toString() + '\r\n');
+              socket.write(error.toString());
             } catch(error) {
-              socket.write('Got Error!\r\n');
+              socket.write('Got Error');
             }
           }).finally(function() {
-            console.log('done!');
-          });;
+            console.log(args, 'done!');
+          });
           
           break;
         default:
