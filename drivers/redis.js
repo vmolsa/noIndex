@@ -3,8 +3,6 @@
 var noIndex = require('../lib/noIndex.js');
 var redis = require('ioredis');
 
-var db = {};
-
 var config = {
   get: function(resolve, reject, driver, key) {
 	  driver.io.get(key).then(function(value) {
