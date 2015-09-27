@@ -107,6 +107,14 @@ get commit by sha
 cache.get('github:repositories:username:reponame@f7e24dc3bf04e2278bd780abb8ad28867bdbc16d')
 ```
 
+#### git ls-tree 5dc1e27e9cf5b30179e4bbba6ef8b2b7752676e6 
+
+get tree by commit
+
+```js
+cache.get('github:repositories:username:reponame@5dc1e27e9cf5b30179e4bbba6ef8b2b7752676e6$?')
+```
+
 #### git ls-tree HEAD
 
 get tree by branch
@@ -147,10 +155,26 @@ list repository tags
 cache.get('github:repositories:username:reponame#?')
 ```
 
-#### git log v1.0.2 -n 1
+#### git rev-parse v1.0.1 | xargs git cat-file -p
 
-get commit / tag by tagname
+get tag by tagname
 
 ```js
 cache.get('github:repositories:username:reponame#v1.0.2')
+```
+
+#### git log v1.0.2 -n 1
+
+get commit by tagname
+
+```js
+cache.get('github:repositories:username:reponame#v1.0.2@?')
+```
+
+#### git ls-tree v1.0.2
+
+get tree by tagname
+
+```js
+cache.get('github:repositories:username:reponame#v1.0.2$?')
 ```
