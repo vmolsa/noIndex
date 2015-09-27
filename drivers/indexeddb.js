@@ -4,7 +4,7 @@ var noIndex = require('../lib/noIndex.js');
 
 var db = {};
 
-var options = {
+var config = {
   get: function(resolve, reject, driver, key) {
     
   },
@@ -25,4 +25,6 @@ var options = {
   }, 
 };
 
-module.exports = new noIndex.Driver(options);
+module.exports = function(options) {
+  return new noIndex.Driver(config);
+}
