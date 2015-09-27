@@ -1,6 +1,6 @@
 {
   "name": "noindex",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "noIndex is database for multiple users / repositories / backend. in-memory cache for git content",
   "homepage": "https://github.com/vmolsa/noIndex",
   "author": "https://github.com/vmolsa",
