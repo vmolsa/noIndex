@@ -3,7 +3,7 @@
 var noIndex = require('../lib/noIndex.js');
 
 var config = {
-  getproviders: function(service, entry, options) {
+  getproviders: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
       resolve([
         new noIndex.File({
@@ -17,30 +17,57 @@ var config = {
       ]);
     });
   },
-  getusers: function(service, entry, options) {
+  getusers: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
-      noIndex.$http.get(service.api + '/user', service.config).then(function(reply) {
-        if (reply.data && reply.data.login) {
-          service.loginName = reply.data.login;
-          resolve([new noIndex.File({
-            service: entry.service,
-            provider: entry.provider,
-            owner: reply.data.login,
-          })]);
-        } else {
-          reject('Invalid reply');
-        }
-      }).catch(function(error) {
-        reject(error);
+      var meta = [
+        entry.service,
+        entry.provider,
+      ].join('/');
+     
+      driver.get(meta, options).then(function(data) {
+        resolve(data);
+      }).catch(function() {
+        noIndex.$http.get(service.api + '/user', service.config).then(function(reply) {
+          if (reply.data && reply.data.login) {
+            service.loginName = reply.data.login;
+            
+            var users = [
+              new noIndex.File({
+                service: entry.service,
+                provider: entry.provider,
+                owner: reply.data.login,
+              }),
+            ];
+            
+            driver.set(meta, users, options).finally(function() {
+              resolve(users);
+            });
+          } else {
+            reject('Invalid reply');
+          }
+        }).catch(function(error) {
+          reject(error);
+        });
       });
     });
-  },  
-  getref: function(service, entry, options) {
-    return noIndex.$q(function(resolve, reject) {
+  },
+  getref: function(service, driver, entry, options) {
+    return noIndex.$q(function(resolve, reject) {    
       var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository;
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repository',
+        entry.repository,
+        'ref'
+      ];
       
       if (entry.tag) {
         uri += '/git/refs/tags/' + entry.tag;
+        
+        meta.push('tag');
+        meta.push(entry.tag);
       } else if (entry.branch) {
         if (entry.branch == 'HEAD') {
           // TODO(): Get HEAD!? -> Typo in API?
@@ -48,64 +75,113 @@ var config = {
         }
         
         uri += '/git/refs/heads/' + entry.branch;
+        
+        meta.push('branch');
+        meta.push(entry.branch);
       }
-      
-      if (entry.tag || (entry.branch && entry.branch !== 'HEAD')) {
-        noIndex.$http.get(uri, service.config).then(function(reply) {
-          resolve(new noIndex.File({
-            service: entry.service,
-            provider: entry.provider,
-            owner: entry.owner,
-            repository: entry.repository,
-            oid: reply.data.object.sha,
-            commit: (reply.data.object.type == 'commit') ? reply.data.object.sha : null,
-          }));
-        }).catch(function(error) {
-          reject(error);
+
+      var key = meta.join('/');
+     
+      if (entry.tag || (entry.branch && entry.branch)) {
+        driver.get(key, options).then(function(data) {
+          resolve(data);
+        }).catch(function() {
+          noIndex.$http.get(uri, service.config).then(function(reply) {
+            var ref = new noIndex.File({
+              service: entry.service,
+              provider: entry.provider,
+              owner: entry.owner,
+              repository: entry.repository,
+              oid: reply.data.object.sha,
+              commit: (reply.data.object.type == 'commit') ? reply.data.object.sha : null,
+            });
+            
+            driver.set(key, ref, options).finally(function() {
+              resolve(ref);
+            });
+          }).catch(function(error) {
+            reject(error);
+          });
         });
       } else {
         reject('Invalid reference');
       }
     });
   },
-  getcommit: function(service, entry, options) {
+  getcommit: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
       var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/git/commits/' + entry.commit || entry.oid;
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repository',
+        entry.repository,
+        'commit',
+        entry.commit || entry.oid,
+      ].join('/');
       
-      noIndex.$http.get(uri, service.config).then(function(reply) {
-        var commit = new noIndex.File({
-          service: entry.service,
-          provider: entry.provider,
-          owner: entry.owner,
-          repository: entry.repository,
-          author: reply.data.author,
-          committer: reply.data.committer,
-          message: reply.data.message,
-          commit: reply.data.sha,
-          tree: reply.data.tree.sha,
-        });
-        
+      driver.get(meta, options).then(function(data) {
         if (options.request == 'tree') {
-          service.gettree(service, commit, options).then(function(tree) {
+          service.gettree(service, driver, data, options).then(function(tree) {
             resolve(tree);
           }).catch(function(error) {
             reject(error);
           });
         } else {
-          resolve(commit);
+          resolve(data);
         }
-      }).catch(function(error) {
-        reject(error);
+      }).catch(function() {
+        noIndex.$http.get(uri, service.config).then(function(reply) {
+          var commit = new noIndex.File({
+            service: entry.service,
+            provider: entry.provider,
+            owner: entry.owner,
+            repository: entry.repository,
+            author: reply.data.author,
+            committer: reply.data.committer,
+            message: reply.data.message,
+            commit: reply.data.sha,
+            tree: reply.data.tree.sha,
+          });
+          
+          driver.set(meta, commit, options).finally(function() {
+            if (options.request == 'tree') {
+              service.gettree(service, driver, commit, options).then(function(tree) {
+                resolve(tree);
+              }).catch(function(error) {
+                reject(error);
+              });
+            } else {
+              resolve(commit);
+            }
+          });
+        }).catch(function(error) {
+          reject(error);
+        });
       });
     });
   },
-  gettree: function(service, entry, options) {
+  getcommits: function(service, driver, entry, options) {
+    return noIndex.$q(function(resolve, reject) {
+      
+    });
+  },
+  gettree: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
       options.request = 'tree';
       
       if (!entry.tree) {
+        if (entry.commit) {
+          return service.getcommit(service, driver, entry, options).then(function(tree) {
+            resolve(tree);
+          }).catch(function(error) {
+            reject(error);
+          });
+        }
+        
         if (entry.tag) {
-          return service.gettag(service, entry, options).then(function(tree) {
+          return service.gettag(service, driver, entry, options).then(function(tree) {
             resolve(tree);
           }).catch(function(error) {
             reject(error);
@@ -113,7 +189,7 @@ var config = {
         }
         
         if (entry.branch) {
-          return service.getbranch(service, entry, options).then(function(tree) {
+          return service.getbranch(service, driver, entry, options).then(function(tree) {
             resolve(tree);
           }).catch(function(error) {
             reject(error);
@@ -121,7 +197,7 @@ var config = {
         }
         
         if (entry.blob) {
-          return service.getblob(service, entry, options).then(function(blob) {
+          return service.getblob(service, driver, entry, options).then(function(blob) {
             resolve(blob);
           }).catch(function(error) {
             reject(error);
@@ -131,49 +207,74 @@ var config = {
         reject('Invalid tree request');
       } else {
         var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/git/trees/' + entry.tree || entry.oid;
+        var meta = [
+          entry.service,
+          entry.provider,
+          entry.owner,
+          'repository',
+          entry.repository,
+          'tree',
+          entry.tree || entry.oid,
+        ].join('/');
         
-        noIndex.$http.get(uri, service.config).then(function(reply) {         
-          if (reply.data.truncated) {
-            reject('Local Clone Required!');
-          } else {
-            var tree = reply.data.tree;
-            var res = [];
-            
-            tree.forEach(function(data) {
-              res.push(new noIndex.File({
-                service: entry.service,
-                provider: entry.provider,
-                owner: entry.owner,
-                repository: entry.repository,
-                branch: entry.branch,
-                blob: (data.type == 'blob') ? data.sha : null,
-                tree: (data.type == 'tree') ? data.sha : null,
-                mode: data.mode,
-                fullpath: data.path,
-              }));
-            });
-            
-            resolve(res);
-          }
-        }).catch(function(error) {
-          reject(error);
+        driver.get(meta, options).then(function(data) {
+          resolve(data);
+        }).catch(function() {
+          noIndex.$http.get(uri, service.config).then(function(reply) {         
+            if (reply.data.truncated) {
+              reject('Local Clone Required!');
+            } else {
+              var tree = reply.data.tree;
+              var res = [];
+              
+              tree.forEach(function(data) {              
+                res.push(new noIndex.File({
+                  service: entry.service,
+                  provider: entry.provider,
+                  owner: entry.owner,
+                  repository: entry.repository,
+                  branch: entry.branch,
+                  blob: (data.type == 'blob') ? data.sha : null,
+                  tree: (data.type == 'tree') ? data.sha : null,
+                  mode: data.mode,
+                  path: data.path,
+                }));
+              });
+              
+              driver.set(meta, res, options).finally(function() {
+                resolve(res);
+              });
+            }
+          }).catch(function(error) {
+            reject(error);
+          });
         });
       }
     });
   },
-  getblob: function(service, entry, options) {
+  getblob: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
       var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/git/blobs/' + entry.blob || entry.oid;
-      
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repository',
+        entry.repository,
+        'blob',
+        entry.blob || entry.oid,
+      ].join('/');
+
       var config = {
         headers: {
           'Host': service.config.headers['Host'],
           'Authorization': service.config.headers['Authorization'],
           'User-Agent': service.config.headers['User-Agent'],
+          'Accept': service.config.headers['Accept'],
         },
         responseType: 'json',
       };
-      
+
       switch (options.encoding) {
         case 'diff':
           config.headers['Accept'] = 'application/vnd.github.v3.diff+json';
@@ -185,78 +286,123 @@ var config = {
           config.headers['Accept'] = 'application/vnd.github.v3.base64+json';
           break;
         default:
-          config.headers['Accept'] = 'application/vnd.github.v3.raw+json';
+          config.headers['Accept'] = 'application/vnd.github.v3+json';
           break;
       }
       
-      noIndex.$http.get(uri, config).then(function(reply) {
-        resolve(new noIndex.File({
-          service: entry.service,
-          provider: entry.provider,
-          owner: entry.owner,
-          repository: entry.repository,
-          branch: entry.branch,
-          blob: reply.data.sha,
-          data: reply.data.content,
-          encoding: reply.data.encoding,
-        }));
-      }).catch(function(error) {
-        reject(error);
+      driver.get(meta, options).then(function(data) {
+        resolve(data);
+      }).catch(function() {
+        noIndex.$http.get(uri, config).then(function(reply) {
+          var blob = new noIndex.File({
+            service: entry.service,
+            provider: entry.provider,
+            owner: entry.owner,
+            repository: entry.repository,
+            branch: entry.branch,
+            blob: reply.data.sha,
+            data: reply.data.content,
+            encoding: reply.data.encoding,
+          });
+          
+          driver.set(meta, blob, options).finally(function() {
+            resolve(blob);
+          });
+        }).catch(function(error) {
+          reject(error);
+        });
       });
     });
   },
-  gettag: function(service, entry, options) {
+  gettag: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
-      service.getref(service, entry, options).then(function(ref) {
+      service.getref(service, driver, entry, options).then(function(ref) {
         var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/git/tags/' + ref.oid;
-        
-        noIndex.$http.get(uri, service.config).then(function(reply) {
-          ref.tag = entry.tag;
-          ref.commit = reply.data.object.sha;
-          ref.tagger = reply.data.tagger;
-          
+        var meta = [
+          entry.service,
+          entry.provider,
+          entry.owner,
+          'repository',
+          entry.repository,
+          'tag',
+          ref.oid,
+        ].join('/');
+      
+        driver.get(meta, options).then(function(data) {
           if (options.request == 'commit' || options.request == 'tree') {
-            service.getcommit(service, ref, options).then(function(commit) {
+            service.getcommit(service, driver, data, options).then(function(commit) {
               resolve(commit);
             }).catch(function(error) {
               reject(error);
             });
           } else {
-            resolve(ref);
+            resolve(data);
           }
+        }).catch(function() {
+          noIndex.$http.get(uri, service.config).then(function(reply) {
+            ref.tag = entry.tag;
+            ref.commit = reply.data.object.sha;
+            ref.tagger = reply.data.tagger;
+            
+            driver.set(meta, ref, options).finally(function() {
+              if (options.request == 'commit' || options.request == 'tree') {
+                service.getcommit(service, driver, ref, options).then(function(commit) {
+                  resolve(commit);
+                }).catch(function(error) {
+                  reject(error);
+                });
+              } else {
+                resolve(ref);
+              }
+            });
+          }).catch(function(error) {
+            reject(error);
+          });
+        });
+      }).catch(function(error) {
+        reject(error);
+      });
+    });
+  },
+  gettags: function(service, driver, entry, options) {        
+    return noIndex.$q(function(resolve, reject) {
+      var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/tags';
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repository',
+        entry.repository,
+        'tags',
+      ].join('/');
+      
+      driver.get(meta, options).then(function(data) {
+        resolve(data);
+      }).catch(function() {
+        noIndex.$http.get(uri, service.config).then(function(reply) {
+          var res = [];
+          
+          reply.data.forEach(function(tag) {          
+            res.push(new noIndex.File({
+              service: entry.service,
+              provider: entry.provider,
+              owner: entry.owner,
+              repository: entry.repository,
+              tag: tag.name,
+              commit: tag.commit.sha,
+            }));
+          });
+          
+          driver.set(meta, res, options).finally(function() {          
+            resolve(res);
+          });
         }).catch(function(error) {
           reject(error);
         });
-      }).catch(function(error) {
-        reject(error);
       });
     });
   },
-  gettags: function(service, entry, options) {        
-    return noIndex.$q(function(resolve, reject) {
-      var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/tags';
-      
-      noIndex.$http.get(uri, service.config).then(function(reply) {
-        var res = [];
-        
-        reply.data.forEach(function(tag) {          
-          res.push(new noIndex.File({
-            service: entry.service,
-            provider: entry.provider,
-            owner: entry.owner,
-            repository: entry.repository,
-            tag: tag.name,
-            commit: tag.commit.sha,
-          }));
-        });
-        
-        resolve(res);
-      }).catch(function(error) {
-        reject(error);
-      });
-    });
-  },
-  getbranch: function(service, entry, options) {
+  getbranch: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
       if (entry.branch === 'HEAD') {
         // TODO(): Get HEAD!? -> Typo in API?
@@ -264,65 +410,110 @@ var config = {
       }
       
       var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/branches/' + entry.branch;
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repository',
+        entry.repository,
+        'branch',
+        entry.branch,
+      ].join('/');
       
-      noIndex.$http.get(uri, service.config).then(function(reply) {
-        var commit = new noIndex.File({
-          service: entry.service,
-          provider: entry.provider,
-          owner: entry.owner,
-          repository: entry.repository,
-          branch: reply.data.name,
-          commit: reply.data.commit.sha,
-          author: reply.data.commit.commit.author,
-          committer: reply.data.commit.commit.committer,
-          message: reply.data.commit.commit.message,
-          tree: reply.data.commit.commit.tree.sha,
-        });
-        
+      driver.get(meta, options).then(function(data) {
         if (options.request == 'tree') {
-          service.gettree(service, commit, options).then(function(tree) {
+          service.gettree(service, driver, data, options).then(function(tree) {
             resolve(tree);
           }).catch(function(error) {
             reject(error);
           });
         } else {
-          resolve(commit);
+          resolve(data);
         }
-      }).catch(function(error) {
-        reject(error);
-      });
-    });
-  },
-  getbranches: function(service, entry, options) {
-    return noIndex.$q(function(resolve, reject) {
-      var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/branches';
-      
-      noIndex.$http.get(uri, service.config).then(function(reply) {
-        var res = [];
-        
-        reply.data.forEach(function(repo) {
-          res.push(new noIndex.File({
+      }).catch(function() {
+        noIndex.$http.get(uri, service.config).then(function(reply) {
+          var commit = new noIndex.File({
             service: entry.service,
             provider: entry.provider,
             owner: entry.owner,
             repository: entry.repository,
-            branch: repo.name,
-            commit: repo.commit.sha,
-          }));
+            branch: reply.data.name,
+            commit: reply.data.commit.sha,
+            author: reply.data.commit.commit.author,
+            committer: reply.data.commit.commit.committer,
+            message: reply.data.commit.commit.message,
+            tree: reply.data.commit.commit.tree.sha,
+          });
+          
+          driver.set(meta, commit, options).finally(function() { 
+            if (options.request == 'tree') {
+              service.gettree(service, driver, commit, options).then(function(tree) {
+                resolve(tree);
+              }).catch(function(error) {
+                reject(error);
+              });
+            } else {
+              resolve(commit);
+            }
+          });
+        }).catch(function(error) {
+          reject(error);
         });
-        
-        resolve(res);
-      }).catch(function(error) {
-        reject(error);
       });
     });
   },
-  getrepositories: function(service, entry, options) {
+  getbranches: function(service, driver, entry, options) {
+    return noIndex.$q(function(resolve, reject) {
+      var uri = service.api + '/repos/' + entry.owner + '/' + entry.repository + '/branches';
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repository',
+        entry.repository,
+        'branches',
+      ].join('/');
+      
+      driver.get(meta, options).then(function(data) {
+        resolve(data);
+      }).catch(function() {
+        noIndex.$http.get(uri, service.config).then(function(reply) {
+          var res = [];
+          
+          reply.data.forEach(function(repo) {
+            res.push(new noIndex.File({
+              service: entry.service,
+              provider: entry.provider,
+              owner: entry.owner,
+              repository: entry.repository,
+              branch: repo.name,
+              commit: repo.commit.sha,
+            }));
+          });
+          
+          driver.set(meta, res, options).finally(function() { 
+            resolve(res);
+          });
+        }).catch(function(error) {
+          reject(error);
+        });
+      });
+    });
+  },
+  getrepositories: function(service, driver, entry, options) {
     return noIndex.$q(function(resolve, reject) {
       var uri = service.api + ((entry.owner == service.loginName) ? '/user/repos' : ('/users/' + entry.owner + '/repos'));
+      var meta = [
+        entry.service,
+        entry.provider,
+        entry.owner,
+        'repositories',
+      ].join('/');
       
-      noIndex.$http.get(uri, service.config).then(function(reply) {
-        if (noIndex.util.isArray(reply.data)) {
+      driver.get(meta, options).then(function(data) {
+        resolve(data);
+      }).catch(function() {
+        noIndex.$http.get(uri, service.config).then(function(reply) {
           var res = [];
           
           reply.data.forEach(function(repo) {
@@ -334,12 +525,12 @@ var config = {
             }));
           });
           
-          resolve(res);
-        } else {
-          reject('Invalid reply');
-        }
-      }).catch(function(error) {
-        reject(error);
+          driver.set(meta, res, options).finally(function() {
+            resolve(res);
+          });
+        }).catch(function(error) {
+          reject(error);
+        });
       });
     });
   },
@@ -376,11 +567,11 @@ module.exports = function(options) {
   service.api = noIndex.util.isString(options.api) ? service.api : 'https://api.github.com';
   service.headers = noIndex.util.isObject(service.headers) ? service.headers : {}; 
   
-  service.headers['User-Agent'] = 'noindex/1.0';
+  service.headers['User-Agent'] = 'noIndex/1.0';
   service.headers['Host'] = 'api.github.com';
   
   if (!service.headers['Accept']) {
-    service.headers['Accept'] = 'application/vnd.github.v3+json';
+    service.headers['Accept'] = 'application/vnd.github.v3.raw+json';
   }
   
   if (noIndex.util.isString(options.token)) {
