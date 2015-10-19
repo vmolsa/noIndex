@@ -82,98 +82,98 @@ cache.get('github:repositories:username') // or
 cache.get('github:repositories:username:?')
 ```
 
-#### git branch -r
+#### list repository branches 
 
-list repository branches
+git branch -r
 
 ```js
 cache.get('github:repositories:username:reponame')	// or
 cache.get('github:repositories:username:reponame:?')
 ```
 
-#### git log -n 1
+#### get latest commit by branch
 
-get latest commit by branch
+git log -n 1
 
 ```js
 cache.get('github:repositories:username:reponame:master')
 ```
 
-#### git log -n 1 f7e24dc3bf04e2278bd780abb8ad28867bdbc16d
+#### get commit by sha
 
-get commit by sha
+git log -n 1 f7e24dc3bf04e2278bd780abb8ad28867bdbc16d
 
 ```js
 cache.get('github:repositories:username:reponame@f7e24dc3bf04e2278bd780abb8ad28867bdbc16d')
 ```
 
-#### git ls-tree 5dc1e27e9cf5b30179e4bbba6ef8b2b7752676e6 
+#### get tree by commit
 
-get tree by commit
+git ls-tree 5dc1e27e9cf5b30179e4bbba6ef8b2b7752676e6 
 
 ```js
 cache.get('github:repositories:username:reponame@5dc1e27e9cf5b30179e4bbba6ef8b2b7752676e6$?')
 ```
 
-#### git ls-tree HEAD
+#### get tree by branch 
 
-get tree by branch
+git ls-tree HEAD
 
 ```js
 cache.get('github:repositories:username:reponame:master$?')
 ```
 
-#### git ls-tree ac49c253adf03ed87af773ef5bba525dfe179ebe 
+#### get tree by sha
 
-get tree by sha
+git ls-tree ac49c253adf03ed87af773ef5bba525dfe179ebe 
 
 ```js
 cache.get('github:repositories:username:reponame$ac49c253adf03ed87af773ef5bba525dfe179ebe')
 ```
 
-#### git cat-file blob 1f8ad68b023efdef5489fe37488c1a9693cf6eca 
+#### get blob by sha 
 
-get blob by sha
+git cat-file blob 1f8ad68b023efdef5489fe37488c1a9693cf6eca 
 
 ```js
 cache.get('github:repositories:username:reponame=1f8ad68b023efdef5489fe37488c1a9693cf6eca')
 ```
 
-#### git show HEAD:README.md
+#### get blob by path 
 
-get blob by path
+git show HEAD:README.md
 
 ```js
 cache.get('github:repositories:username:reponame/README.md')
 ```
 
-#### git tag
+#### list repository tags
 
-list repository tags
+git tag
 
 ```js
 cache.get('github:repositories:username:reponame#?')
 ```
 
-#### git rev-parse v1.0.1 | xargs git cat-file -p
+#### get tag by tagname
 
-get tag by tagname
+git rev-parse v1.0.1 | xargs git cat-file -p
 
 ```js
 cache.get('github:repositories:username:reponame#v1.0.2')
 ```
 
-#### git log v1.0.2 -n 1
+#### get commit by tagname 
 
-get commit by tagname
+git log v1.0.2 -n 1
 
 ```js
 cache.get('github:repositories:username:reponame#v1.0.2@?')
 ```
 
-#### git ls-tree v1.0.2
+#### get tree by tagname
 
-get tree by tagname
+git ls-tree v1.0.2
 
 ```js
 cache.get('github:repositories:username:reponame#v1.0.2$?')
